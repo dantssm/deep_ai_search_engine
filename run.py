@@ -1,14 +1,15 @@
 import uvicorn
 
 if __name__ == "__main__":
-    print("--- AI DEEP SEARCH ENGINE ---")
-    print("\nOpen your browser and go to:")
-    print("http://localhost:8000")
-    print("\nAPI Documentation available at:")
-    print("http://localhost:8000/docs")
-    print("\nPress Ctrl+C to stop the server")
+    print("\nDeep Research Engine")
+    print("=" * 40)
+    print("Web Interface: http://localhost:8000")
+    print("API Documentation: http://localhost:8000/docs")
+    print("=" * 40 + "\n")
     
-    uvicorn.run("src.app.main:app",
-                host="0.0.0.0",
-                port=8000,
-                reload=True)
+    uvicorn.run(
+        "src.app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )

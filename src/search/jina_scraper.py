@@ -1,6 +1,7 @@
 import httpx
 import asyncio
 from typing import List, Dict, Optional
+from src.utils.logger import log_scrape
 
 class JinaWebScraper:
 
@@ -23,7 +24,6 @@ class JinaWebScraper:
         async with httpx.AsyncClient(timeout=self.TIMEOUT) as client:
             
             try:
-
                 jina_url = f"{self.BASE_URL}{url}"
                 
                 response = await client.get(jina_url, follow_redirects=True)
@@ -34,20 +34,20 @@ class JinaWebScraper:
                 if len(content) > self.max_content_length:
                     content = content[:self.max_content_length] + "..."
                 
-                print(f"Scraped {len(content)} chars from {url[:50]}...")
+                log_scrape(f"Scraped {len(content)} chars from {url[:50]}...")
                 return content
                 
             except httpx.HTTPStatusError as e:
-                print(f"HTTP {e.response.status_code} for {url[:50]}...")
+                log_scrape(f"HTTP {e.response.status_code} for {url[:50]}...", level="warning")
                 return None
             
             except Exception as e:
-                print(f"Failed to scrape {url[:50]}...: {str(e)[:50]}")
+                log_scrape(f"Failed to scrape {url[:50]}...: {str(e)[:50]}", level="error")
                 return None
     
     async def scrape_multiple(self, urls: List[str], max_concurrent: int = 10) -> List[Dict]:
         """
-        Scrapes multiple URLs concurrently (meaning ).
+        Scrapes multiple URLs concurrently.
 
         Args:
             urls: A list of URLs.
@@ -66,12 +66,12 @@ class JinaWebScraper:
                     return {"url": url, "content": content}
                 return None
         
-        print(f"Scraping {len(urls)} URLs (max {max_concurrent} at once)...")
+        log_scrape(f"Scraping {len(urls)} URLs (max {max_concurrent} at once)...")
         
         tasks = [scrape_one(url) for url in urls]
         results = await asyncio.gather(*tasks)
         
         valid_results = [r for r in results if r is not None]
         
-        print(f"Successfully scraped {len(valid_results)}/{len(urls)} URLs")
+        log_scrape(f"Successfully scraped {len(valid_results)}/{len(urls)} URLs")
         return valid_results

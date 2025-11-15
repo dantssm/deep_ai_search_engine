@@ -1,194 +1,177 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import os
+import uuid
+import asyncio
+import tempfile
+from datetime import datetime
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Dict
-from datetime import datetime
-import os
 
-from src.pipeline.deep_search import DeepSearchPipeline
+from src.pipeline import DeepResearchPipeline
+from src.utils.logger import log_pipeline, add_log_callback, remove_log_callback
+from src.services import get_session_manager, set_current_session, get_memory_stats
 
-app = FastAPI(title="AI Deep Search Engine",
-              description="Deep search using Google, web scraping, and LLM",
-              version="1.1"
-              )
+app = FastAPI(title="AI Open Deep Research Engine", version="4.0")
 
-app.add_middleware(CORSMiddleware,
-                   allow_origins=["*"],
-                   allow_credentials=True,
-                   allow_methods=["*"],
-                   allow_headers=["*"])
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-BASE_DIR = os.path.dirname(__file__)
-app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
-print("--- Starting Deep Search... ---")
-pipeline = DeepSearchPipeline()
-print("--- API ready! ---\n")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+_pipelines = {}
 
-class SearchRequest(BaseModel):
-    query: str
-    depth: int = 2  # How many search queries to generate
-    max_results: int = 7  # Results per query
+log_pipeline("Open Deep Research Engine Ready (Refactored)")
 
-class SearchResponse(BaseModel):
-    query: str
-    answer: str
-    sources: List[Dict]
-    total_sources: int
-    chunks_analyzed: int
-    time_seconds: float
-    timestamp: str
+@app.get("/")
+async def home():
+    """Main HTML page endpoint"""
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
-
-@app.get("/", response_class=HTMLResponse)
-async def serve_homepage():
-    html_path = os.path.join(BASE_DIR, "index.html")
+@app.get("/api/health")
+async def health():
+    """Health check endpoint providing system stats"""
+    stats = get_memory_stats()
+    is_available = stats.get("available", False)
     
-    if not os.path.exists(html_path):
-        return HTMLResponse(
-            content="""
-            <html>
-                <head><title>Deep Search Engine</title></head>
-                <body>
-                    <h1>Deep Search Engine API</h1>
-                    <p>The API is running, but the web interface (index.html) was not found.</p>
-                    <p>Available endpoints:</p>
-                    <ul>
-                        <li>WebSocket: ws://localhost:8000/ws/search</li>
-                        <li>REST API: POST /api/search</li>
-                        <li>Health Check: GET /api/health</li>
-                        <li>API Docs: <a href="/docs">/docs</a></li>
-                    </ul>
-                </body>
-            </html>
-            """,
-            status_code=200
-        )
-    
-    with open(html_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "active_sessions": stats.get("active_sessions", 0),
+        "system_usage": {
+            "ram_used_mb": round(stats.get("rss_mb", 0), 2) if is_available else "N/A",
+            "ram_usage_percent": round(stats.get("percent", 0), 2) if is_available else "N/A"
+        }
+    }
 
 @app.websocket("/ws/search")
-async def websocket_search(websocket: WebSocket):
-    await websocket.accept()
-    print("WebSocket connected")
+async def websocket_search(ws: WebSocket):
+    """WebSocket endpoint for research operations"""
+    await ws.accept()
+    session_id = str(uuid.uuid4())
+    log_pipeline(f"WebSocket connected (session: {session_id[:8]})")
+
+    set_current_session(session_id)
+    pipeline = DeepResearchPipeline(session_id)
+    _pipelines[session_id] = pipeline
+    
+    async def log_to_ws(message: str):
+        try:
+            await ws.send_json({"type": "status", "message": message})
+        except Exception:
+            pass
+    
+    add_log_callback(log_to_ws)
     
     try:
         while True:
-            data = await websocket.receive_json()
-            print(f"Received WebSocket message: {data.get('type')}")
+
+            data = await ws.receive_json()
+            message_type = data.get("type")
             
-            if data.get("type") == "search":
-                query = data.get("query", "")
-                depth = data.get("depth", 2)
-                max_results = data.get("max_results", 7)
+            if message_type == "create_plan":
+                query = data.get("query", "").strip()
+                depth = data.get("depth", "standard")
                 
                 if not query:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Query is required"
-                    })
+                    await ws.send_json({"type": "error", "message": "Query required"})
                     continue
                 
-                print(f"\nWebSocket search started")
-                print(f"Query: '{query}'")
-                print(f"Depth: {depth}")
-                print(f"Max results: {max_results}")
+                try:
+                    plan = await pipeline.create_plan(query, depth)
+                    await ws.send_json({"type": "plan_generated", "plan": plan})
+                except Exception as e:
+                    await ws.send_json({"type": "error", "message": str(e)})
+            
+            elif message_type == "refine_plan":
+                try:
+                    refined = await pipeline.refine_plan(
+                        data.get("query", ""),
+                        data.get("depth", "standard"),
+                        data.get("current_plan", {}),
+                        data.get("feedback", "")
+                    )
+                    await ws.send_json({"type": "plan_refined", "plan": refined})
+                except Exception as e:
+                    await ws.send_json({"type": "error", "message": str(e)})
+            
+            elif message_type == "execute_research":
+                plan = data.get("plan")
+                if not plan: continue
                 
                 try:
-                    result = await pipeline.search(
-                        query=query,
-                        depth=depth,
-                        max_results=max_results,
-                        websocket=websocket
-                    )
-                    
-                    await websocket.send_json({
-                        "type": "complete",
-                        "data": {
-                            "query": result["query"],
-                            "answer": result["answer"],
-                            "sources": result["sources"],
-                            "total_sources": result["total_sources"],
-                            "chunks_analyzed": result["chunks_analyzed"],
-                            "time_seconds": result["time_seconds"]
-                        }
-                    })
-                    
-                    print(f"WebSocket search complete\n")
-                    
+                    if data.get("enable_streaming", True):
+                        await pipeline.execute_research_streaming(plan, ws=ws)
+                    else:
+                        result = await pipeline.execute_research(plan)
+                        await ws.send_json({"type": "complete", "result": result})
+
                 except Exception as e:
-                    print(f"Search error: {str(e)}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Search failed: {str(e)}"
-                    })
-    
+                    log_pipeline(f"Research error: {e}", level="error")
+                    await ws.send_json({"type": "error", "message": str(e)})
+            
+            elif message_type == "clear":
+                pipeline.clear()
+                await ws.send_json({"type": "cleared"})
+                
     except WebSocketDisconnect:
-        print("WebSocket disconnected")
-    except Exception as e:
-        print(f"WebSocket error: {str(e)}")
-
-
-@app.post("/api/search", response_model=SearchResponse)
-async def search_api(request: SearchRequest):
-    try:
-        print(f"\nREST API search started")
-        print(f"Query: '{request.query}'")
-        print(f"Depth: {request.depth}")
-        print(f"Max results: {request.max_results}")
-
-        result = await pipeline.search(
-            query=request.query,
-            depth=request.depth,
-            max_results=request.max_results,
-            websocket=None
-        )
+        log_pipeline(f"WebSocket disconnected (session: {session_id[:8]})")
         
-        print(f"REST API search complete\n")
-        
-        return SearchResponse(
-            query=result['query'],
-            answer=result['answer'],
-            sources=result['sources'],
-            total_sources=result['total_sources'],
-            chunks_analyzed=result['chunks_analyzed'],
-            time_seconds=result['time_seconds'],
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        print(f"Search error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        remove_log_callback(log_to_ws)
+        get_session_manager().cleanup_session(session_id)
+        _pipelines.pop(session_id, None)
 
-@app.get("/api/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "message": "Deep Search API is running"
-    }
+class ExportRequest(BaseModel):
+    session_id: str
 
-@app.post("/api/clear")
-async def clear_knowledge():
-    try:
-        pipeline.clear_knowledge()
-        return {
-            "status": "success",
-            "message": "Knowledge base cleared",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    print("Starting Deep Search API Server")
-    print("API will be available at: http://localhost:8000")
-    print("WebSocket endpoint: ws://localhost:8000/ws/search")
-    print("REST API endpoint: http://localhost:8000/api/search")
+@app.post("/api/export")
+async def export_report(request: ExportRequest, background_tasks: BackgroundTasks):
+    """Export research report as a Markdown file"""
+    session_id = request.session_id
+    pipeline = _pipelines.get(session_id)
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    if not pipeline or not getattr(pipeline, 'last_result', None):
+        raise HTTPException(status_code=404, detail="No report available")
+    
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.md') as tmp:
+        tmp_path = tmp.name
+        
+    try:
+        from src.utils.export import export_to_markdown_from_json
+        
+        if export_to_markdown_from_json(pipeline.last_result, tmp_path):
+            background_tasks.add_task(os.unlink, tmp_path)
+            
+            return FileResponse(
+                tmp_path, 
+                media_type="text/markdown", 
+                filename="research_report.md"
+            )
+            
+        raise HTTPException(status_code=500, detail="Export failed")
+        
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event to initialize periodic cleanup task"""
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(600)
+            get_session_manager().cleanup_old_sessions(max_age_seconds=3600)
+            
+    asyncio.create_task(periodic_cleanup())

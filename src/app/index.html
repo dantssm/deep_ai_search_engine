@@ -1,58 +1,124 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AI Deep Search</title>
-  <link rel="stylesheet" href="/static/style.css" />
-  <script>
-    window.MathJax = {
-      tex: { inlineMath: [['$', '$']], displayMath: [['$$','$$']] },
-      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
-    };
-  </script>
-  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Researchly.ai - Open AI Deep Research</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>AI Deep Search Engine</h1>
-
-    <div class="search-box">
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Ask anything... (e.g., 'How does quantum computing work?')"
-        onkeypress="if(event.key === 'Enter') search()"
-        autocomplete="off"
-      />
-      <button onclick="search()" id="searchBtn">Search</button>
-    </div>
-
-    <div class="options">
-      <div class="option">
-        <label>Search Depth:</label>
-        <select id="depth">
-          <option value="1">Quick (1 level)</option>
-          <option value="2">Standard (2 levels)</option>
-          <option value="3" selected>Deep (3 levels)</option>
-          <option value="4">Very Deep (4 levels)</option>
-          <option value="5">Maximum (5 levels)</option>
-        </select>
+  
+  <div id="mainScreen" class="screen active">
+    <div class="container-card container-centered">
+      <div class="header">
+        <h1 class="title">Researchly.ai</h1>
+        <p class="subtitle">Open AI Deep research</p>
       </div>
-      <div class="option">
-        <label>Max Results:</label>
-        <select id="maxResults">
-          <option value="3">3</option>
-          <option value="5">5</option>
-          <option value="7" selected>7</option>
-          <option value="10">10</option>
-          <option value="15">15</option>
-        </select>
+      
+      <div class="input-group">
+        <input type="text" id="mainInput" class="main-input" placeholder="What would you like to research?">
+        <button id="createPlanBtn" class="btn btn-primary btn-lg">create research<br>plan</button>
+      </div>
+      
+      <div class="depth-selector">
+        <span class="depth-label">depth:</span>
+        <button id="depthBtn" class="btn">standard</button>
+      </div>
+      
+      <div class="bottom-actions">
+        <button id="aboutBtn" class="btn">about</button>
+        <button id="surpriseBtn" class="btn">surprise me!</button>
       </div>
     </div>
+  </div>
 
-    <div id="status-log"></div>
-    <div id="results"></div>
+  <div id="planScreen" class="screen">
+    <div class="container-card">
+      <div class="header">
+        <h1 class="title">Researchly.ai</h1>
+        <p class="subtitle">Open AI Deep research</p>
+      </div>
+      
+      <div class="input-group compact">
+        <input type="text" id="planInput" class="main-input" readonly>
+        <button id="editPlanBtn" class="btn btn-primary">edit topic</button>
+      </div>
+      
+      <div class="depth-selector">
+        <span class="depth-label">depth:</span>
+        <button id="depthBtnPlan" class="btn">standard</button>
+      </div>
+      
+      <div class="plan-layout">
+        <div class="panel plan-display">
+          <div class="plan-header">Research plan</div>
+          <div id="planText" class="plan-text"></div>
+        </div>
+        
+        <div class="plan-sidebar">
+          <button id="initializeBtn" class="btn">Initialize research</button>
+          <button id="refineBtn" class="btn">Refine</button>
+          
+          <div class="refine-box" id="refineInputContainer">
+            <input type="text" id="refineInput" class="refine-input" placeholder="Feedback...">
+            <button id="sendRefineBtn" class="btn btn-sm btn-primary">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="researchScreen" class="screen">
+    <div class="container-card container-wide">
+      <div class="header">
+        <h1 class="title">Researchly.ai</h1>
+        <p class="subtitle">Open AI Deep research</p>
+      </div>
+      
+      <div class="input-group compact">
+        <input type="text" id="researchInput" class="main-input" readonly>
+        <button class="btn btn-primary" disabled>researching...</button>
+      </div>
+      
+      <div id="statusBar" class="status-bar">Status: initializing</div>
+      
+      <div class="output-layout">
+        <div id="outputPanel" class="panel output-content">
+          <div id="outputContent"></div>
+        </div>
+      </div>
+      
+      <div class="bottom-actions split-actions">
+        <button id="exportBtn" class="btn btn-primary hidden">export as md</button>
+        <button id="toggleLogsBtn" class="btn">Show logs</button>
+      </div>
+    </div>
+
+    <div id="logsPanel" class="logs-panel">
+      <div class="logs-header">
+        <span>Research Logs <span style="font-size:0.8em; opacity:0.6; margin-left:8px;">Live</span></span>
+        <button id="minimizeLogsBtn" class="close-btn" title="Minimize">×</button>
+      </div>
+      <div id="logsContent" class="logs-content"></div>
+    </div>
+  </div>
+
+  <div id="aboutScreen" class="screen">
+    <div class="container-card container-narrow container-centered">
+      <div class="header">
+        <h1 class="title">About Researchly.ai</h1>
+        <p class="subtitle">Powered by Open Source AI</p>
+      </div>
+
+      <div class="about-text">
+        <p>This is a deep research engine capable of verifying facts and detecting contradictions.</p>
+        <br>
+        <p>Built with LangGraph, Gemini, and FastAPI.</p>
+      </div>
+
+      <button id="closeAboutBtn" class="btn">Back to Research</button>
+    </div>
   </div>
 
   <script src="/static/script.js"></script>
