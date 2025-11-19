@@ -1,6 +1,6 @@
 let ws = null; 
 let wsReady = false; 
-let currentSessionId = generateSessionId(); 
+let currentSessionId = null;
 let currentPlan = null;
 let currentResult = null;
 let currentDepth = 'standard';
@@ -23,6 +23,7 @@ function connectWebSocket() {
     ws.onclose = () => {
         console.log('Disconnected. Reconnecting in 2 seconds...');
         wsReady = false;
+        currentSessionId = null;
         setTimeout(connectWebSocket, 2000);
     };
 
@@ -39,6 +40,11 @@ function connectWebSocket() {
 
 function handleServerMessage(data) {
     switch (data.type) {
+        case 'session_id':
+            currentSessionId = data.session_id;
+            console.log('Session ID received:', currentSessionId);
+            break;
+
         case 'plan_generated':
         case 'plan_refined':
             currentPlan = data.plan;
@@ -97,7 +103,7 @@ function setupButtons() {
     document.getElementById('sendRefineBtn').onclick = handleRefinePlan;
 
     document.getElementById('toggleLogsBtn').onclick = toggleLogsPanel;
-    document.getElementById('minimizeLogsBtn').onclick = closeLogsPanel; // New Close Button Handler
+    document.getElementById('minimizeLogsBtn').onclick = closeLogsPanel;
 
     document.getElementById('exportBtn').onclick = downloadReport;
 
@@ -183,8 +189,7 @@ function startResearch() {
     sendToServer({
         type: 'execute_research',
         plan: currentPlan,
-        enable_streaming: true,
-        session_id: currentSessionId
+        enable_streaming: true
     });
 }
 
@@ -302,10 +307,6 @@ function closeLogsPanel() {
     document.getElementById('toggleLogsBtn').textContent = 'Show Logs';
 }
 
-function generateSessionId() {
-    return 'session_' + Math.random().toString(36).substr(2, 9);
-}
-
 function escapeHtml(text) {
     if (!text) return '';
     return text
@@ -317,7 +318,10 @@ function escapeHtml(text) {
 }
 
 async function downloadReport() {
-    if (!currentSessionId) return;
+    if (!currentSessionId) {
+        alert('No active session. Please complete a research first.');
+        return;
+    }
     
     try {
         const response = await fetch('/api/export', {
@@ -335,11 +339,14 @@ async function downloadReport() {
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         } else {
-            alert("Export failed.");
+            const errorText = await response.text();
+            console.error('Export failed:', errorText);
+            alert(`Export failed: ${response.status} - ${errorText}`);
         }
     } catch (e) {
-        console.error(e);
-        alert("Export error.");
+        console.error('Export error:', e);
+        alert(`Export error: ${e.message}`);
     }
 }

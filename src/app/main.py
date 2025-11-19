@@ -60,6 +60,8 @@ async def websocket_search(ws: WebSocket):
     session_id = str(uuid.uuid4())
     log_pipeline(f"WebSocket connected (session: {session_id[:8]})")
 
+    await ws.send_json({"type": "session_id", "session_id": session_id})
+
     set_current_session(session_id)
     pipeline = DeepResearchPipeline(session_id)
     _pipelines[session_id] = pipeline
