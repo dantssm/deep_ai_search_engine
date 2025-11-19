@@ -1,12 +1,3 @@
-"""Orchestrator nodes - coordinates multiple researchers.
-
-UPDATES:
-- Removed verification step
-- Now uses prompts from src.prompts module
-- Cleaner separation of logic and instructions
-- FIXED: Citation extraction now handles [1, 2, 3] format
-"""
-
 import asyncio
 import hashlib
 import re
@@ -258,7 +249,11 @@ async def dispatch_node(state: OrchestratorState) -> dict:
 
 
 async def critique_node(state: OrchestratorState) -> dict:
-    """Analyze results and generate new topics if confidence is low."""
+    """Analyze results and generate new topics if confidence is low.
+    
+    BALANCED: Confidence threshold at 0.60 (middle ground between 0.55 and 0.70).
+    Allows up to 4 iterations for better depth.
+    """
     log_orchestrator("=" * 60)
     log_orchestrator("CRITIQUE & DEEPENING")
     log_orchestrator("=" * 60)
@@ -272,8 +267,8 @@ async def critique_node(state: OrchestratorState) -> dict:
     
     log_orchestrator(f"Current Average Confidence: {avg_confidence:.2f}")
     
-    if avg_confidence < 0.7 and state["iteration"] < state["max_iterations"]:
-        log_orchestrator("Confidence below threshold (0.7). Generating follow-up topics...")
+    if avg_confidence < 0.60 and state["iteration"] < min(state["max_iterations"], 4):
+        log_orchestrator("Confidence below threshold (0.60). Generating follow-up topics...")
         
         all_gaps = []
         for r in completed:
@@ -289,7 +284,7 @@ async def critique_node(state: OrchestratorState) -> dict:
         )
         
         existing = set(state["sub_topics"])
-        final_new = [t for t in new_topics if t not in existing][:3]
+        final_new = [t for t in new_topics if t not in existing][:2]
         
         if final_new:
             log_orchestrator(f"Added {len(final_new)} new topics for deepening:")

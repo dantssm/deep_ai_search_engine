@@ -1,5 +1,3 @@
-"""Application constants and depth configurations."""
-
 DEPTH_PARAMS = {
     "standard": {
         "max_results": 12, 
@@ -11,7 +9,7 @@ DEPTH_PARAMS = {
         "max_results": 18, 
         "sources_range": "15-25", 
         "max_searches": 8,
-        "researcher_iterations": 3
+        "researcher_iterations": 2
     }
 }
 

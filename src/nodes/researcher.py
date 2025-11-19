@@ -1,11 +1,3 @@
-"""Researcher nodes - handles single topic investigation with quality tracking.
-
-UPDATES:
-- Now uses native JSON mode for reflections (no more safe_json_parse)
-- Prompts extracted to src.prompts module
-- Better error handling
-"""
-
 from typing import Dict, List
 from src.states import ResearcherState
 from src.services import get_llm, LLMTier
@@ -178,7 +170,11 @@ async def retrieve_node(state: ResearcherState) -> dict:
 
 
 async def reflect_node(state: ResearcherState) -> dict:
-    """Reflect on progress and decide next steps using JSON mode."""
+    """Reflect on progress and decide next steps using JSON mode.
+    
+    BALANCED: Early stopping at 70% coverage (was 60% in fast version).
+    Allows continuation when needed for better depth.
+    """
     iter_count = state["iteration"] + 1
     
     if iter_count >= state["max_iterations"]:
@@ -186,6 +182,18 @@ async def reflect_node(state: ResearcherState) -> dict:
     
     coverage = analyze_content_coverage(state["retrieved_chunks"], state["topic"])
     log_researcher(f"Coverage: {coverage['coverage_score']:.1%}")
+    
+    if coverage['coverage_score'] >= 0.7 and len(state["retrieved_chunks"]) >= 6:
+        return {
+            "reflections": state["reflections"] + [{
+                "facts_learned": [c.get("content", "")[:100] for c in state["retrieved_chunks"][:5]],
+                "gaps": [],
+                "confidence": 0.7,
+                "continue_research": False,
+                "next_query": ""
+            }],
+            "iteration": iter_count
+        }
     
     context = format_context_chunks(state["retrieved_chunks"])
     
@@ -199,7 +207,7 @@ async def reflect_node(state: ResearcherState) -> dict:
     
     try:
         llm = get_llm(LLMTier.FAST)
-        data = await llm.generate_json(prompt, max_tokens=1000)
+        data = await llm.generate_json(prompt, max_tokens=500)
         
         if not isinstance(data, dict):
             raise ValueError("Response is not a dictionary")
@@ -210,16 +218,20 @@ async def reflect_node(state: ResearcherState) -> dict:
         data.setdefault("continue_research", False)
         data.setdefault("next_query", "")
         
-        if coverage['coverage_score'] >= 0.5:
-            data['confidence'] = max(data.get('confidence', 0.5), 0.5)
-        elif coverage['coverage_score'] < 0.5:
-            data['confidence'] = min(data.get('confidence', 0.5), 0.6)
+        # CHANGED: More nuanced confidence scoring
+        if coverage['coverage_score'] >= 0.6:
+            data['confidence'] = max(data.get('confidence', 0.5), 0.65)
+        elif coverage['coverage_score'] >= 0.5:
+            data['confidence'] = max(data.get('confidence', 0.5), 0.55)
         
-        if coverage['coverage_score'] < 0.5 and iter_count < state["max_iterations"] - 1:
+        # CHANGED: Continue if coverage is below 60% (was 50%)
+        if coverage['coverage_score'] < 0.6 and len(state["retrieved_chunks"]) < 7:
             data['continue_research'] = True
             
             if not data.get('next_query') and coverage['missing_aspects']:
                 data['next_query'] = f"{state['topic']} {coverage['missing_aspects'][0]}"
+        else:
+            data['continue_research'] = False
         
         log_researcher(f"Reflection: confidence={data.get('confidence', 0):.2f}, continue={data.get('continue_research', False)}")
         
@@ -235,9 +247,9 @@ async def reflect_node(state: ResearcherState) -> dict:
 
         return {
             "reflections": state["reflections"] + [{
-                "confidence": 0.5,
-                "continue_research": iter_count < state["max_iterations"] - 1,
-                "gaps": ["Reflection error"],
+                "confidence": 0.55,
+                "continue_research": False,
+                "gaps": [],
                 "facts_learned": [],
                 "next_query": ""
             }],

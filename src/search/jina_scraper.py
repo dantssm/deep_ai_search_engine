@@ -4,9 +4,10 @@ from typing import List, Dict, Optional
 from src.utils.logger import log_scrape
 
 class JinaWebScraper:
+    """Web scraper using Jina AI's reader service."""
 
     BASE_URL = "https://r.jina.ai/"
-    TIMEOUT = 15.0
+    TIMEOUT = 10.0
     
     def __init__(self, max_content_length: int = 6000):
         self.max_content_length = max_content_length
@@ -38,11 +39,12 @@ class JinaWebScraper:
                 return content
                 
             except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    return None
                 log_scrape(f"HTTP {e.response.status_code} for {url[:50]}...", level="warning")
                 return None
             
             except Exception as e:
-                log_scrape(f"Failed to scrape {url[:50]}...: {str(e)[:50]}", level="error")
                 return None
     
     async def scrape_multiple(self, urls: List[str], max_concurrent: int = 10) -> List[Dict]:

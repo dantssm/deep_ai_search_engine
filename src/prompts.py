@@ -1,13 +1,3 @@
-"""Centralized prompt templates for the research system.
-
-This module separates prompt engineering from Python logic,
-making prompts easier to:
-- Review and modify
-- Version control
-- A/B test
-- Translate
-"""
-
 from typing import List, Dict
 
 def get_topic_breakdown_prompt(query: str, num_topics: int) -> str:
@@ -152,14 +142,20 @@ Output exactly 3 lines, no numbering."""
 
 
 def get_synthesis_prompt(query: str, findings_by_topic: str, source_list: str) -> str:
-    """Generate prompt for final report synthesis with CLEAR citation instructions."""
+    """Generate prompt for final report synthesis with CLEAR citation instructions.
+    
+    UPDATED: Much clearer instructions about citation format and what NOT to cite.
+    """
+    
+    # Count number of sources for the prompt
+    num_sources = len([line for line in source_list.split('\n') if line.strip().startswith('[')])
     
     return f"""You are writing a comprehensive research report on: "{query}"
 
-Below are research findings from multiple sub-topics. Your job is to synthesize this into ONE cohesive report.
+Below are research findings from multiple research areas. Your job is to synthesize this into ONE cohesive report.
 
 ═══════════════════════════════════════════════════════════════
-RESEARCH FINDINGS BY SUB-TOPIC:
+RESEARCH FINDINGS:
 ═══════════════════════════════════════════════════════════════
 
 {findings_by_topic}
@@ -171,21 +167,27 @@ SOURCES AVAILABLE TO CITE:
 {source_list}
 
 ═══════════════════════════════════════════════════════════════
-CRITICAL CITATION RULES - READ CAREFULLY:
+❌ CRITICAL - CITATION RULES - READ VERY CAREFULLY ❌
 ═══════════════════════════════════════════════════════════════
 
-YOU MUST CITE SOURCES USING ONLY THE NUMBERED FORMAT: [1], [2], [3], etc.
+YOU **MUST** CITE SOURCES USING **ONLY** THIS FORMAT: [1], [2], [3]
 
-CORRECT CITATIONS:
-- "Nicki Minaj has four number-one albums [1]."
-- "Early pioneers like MC Lyte [2] and Roxanne Shante [3] established..."
+✅ CORRECT EXAMPLES:
+- "Nicki Minaj has sold over 100 million records [1]."
+- "Early pioneers like MC Lyte [2] and Queen Latifah [3] established..."
 - "Studies show conflicting results [1, 2, 3]."
 
-WRONG - NEVER USE THESE:
-- "[Topic: Commercial success]" ← NEVER cite "topics"
-- "[Source: Website]" ← NEVER cite this way
-- "According to research [Topic: ...]" ← NEVER do this
-- No citation at all ← ALWAYS cite claims
+❌ WRONG - NEVER DO THIS:
+- "According to the research findings..." ← NO CITATIONS = WRONG
+- "[Research Area 1]" ← NOT A CITATION
+- "[Commercial success]" ← NOT A CITATION  
+- "[Criteria and characteristics]" ← NOT A CITATION
+- No citation at all ← ALWAYS CITE CLAIMS
+
+🔴 EVERY FACTUAL CLAIM **MUST** HAVE [1], [2], [3] etc.
+🔴 The findings contain "Research Area X:" labels - IGNORE THESE, they are NOT citations
+🔴 Use ONLY the numbered sources [1] through [{num_sources}] from the list above
+🔴 Do NOT reference research areas or topics - only cite numbered sources
 
 CITATION REQUIREMENTS:
 1. EVERY factual claim MUST have a citation [1], [2], etc.
@@ -193,7 +195,7 @@ CITATION REQUIREMENTS:
 3. NEVER invent citation formats - ONLY use [1], [2], [3]...
 4. You can cite multiple sources: [1, 2, 3]
 5. When sources disagree: "Source [1] claims X, while [2] argues Y"
-6. Cite specific sources, not "topics" or "research"
+6. Cite specific sources, not "research areas" or "topics"
 
 ═══════════════════════════════════════════════════════════════
 REPORT STRUCTURE:
@@ -202,25 +204,22 @@ REPORT STRUCTURE:
 Write your report with these sections:
 
 1. **Executive Summary** (2-3 paragraphs)
-   - Direct answer to the query with citations
+   - Direct answer with citations [1], [2], etc.
    - Key findings with source references
 
 2. **Detailed Analysis** (5-8 paragraphs)
-   - In-depth exploration with HEAVY citations
-   - Every claim needs [1], [2], etc.
+   - Every claim needs [1], [2], [3] etc.
    - Present different perspectives when sources disagree
 
 3. **Key Findings** (3-5 bullet points)
-   - Specific, cited facts
-   - Each bullet MUST have citations
+   - Each bullet MUST have [X] citations
 
 4. **Different Perspectives** (if sources disagree)
    - Present conflicting viewpoints
    - Cite which source says what
 
 5. **Conclusion** (1-2 paragraphs)
-   - Summary with citations
-   - Synthesis of findings
+   - Summary with [X] citations
 
 ═══════════════════════════════════════════════════════════════
 WRITING STYLE RULES:
@@ -234,9 +233,9 @@ DO THIS:
 - Be ASSERTIVE with proper citations
 
 NEVER DO THIS:
-- "The research summary says..." ← Write directly
-- "According to findings..." ← Just state the fact with citation
-- "Topic: Commercial success shows..." ← NEVER cite topics
+- "The research findings show..." ← Write directly
+- "According to Research Area 2..." ← NEVER cite research areas
+- "Research Area: Commercial success shows..." ← NEVER cite this way
 - Vague language like "unclear" or "under investigation"
 - Missing citations on factual claims
 
@@ -260,13 +259,14 @@ def format_sources_for_synthesis(sources: List[Dict], max_sources: int = 40) -> 
 def format_findings_by_topic(completed: List[Dict]) -> str:
     """Format research findings by topic for synthesis.
     
-    NOTE: We use 'Sub-topic:' to avoid confusion with citations.
+    CHANGED: Use 'Research Area X:' instead of 'Sub-topic:' to avoid citation confusion.
+    This makes it clear these are section headers, not citation references.
     """
     formatted = []
-    for r in completed:
+    for i, r in enumerate(completed, 1):
         topic = r['topic']
         findings = r['findings']
-        formatted.append(f"Sub-topic: {topic}\n{findings}")
+        formatted.append(f"Research Area {i}: {topic}\n{findings}")
     
     return '\n\n───────────────────────────────────────\n\n'.join(formatted)
 
