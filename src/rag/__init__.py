@@ -1,5 +1,5 @@
-"""RAG package - now exports EnhancedRAGStore for consistency."""
+"""RAG package"""
 
-from .enhanced_store import EnhancedRAGStore
+from .store import RAGStore
 
-__all__ = ["EnhancedRAGStore"]
+__all__ = ["RAGStore"]

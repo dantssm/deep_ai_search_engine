@@ -1,29 +1,36 @@
+"""Jina AI Web Scraper wrapper"""
+
 import httpx
 import asyncio
 from typing import List, Dict, Optional
 from src.utils.logger import log_scrape
 
 class JinaWebScraper:
-    """Web scraper using Jina AI's reader service."""
+    """Client for Jina AI's Reader API"""
 
     BASE_URL = "https://r.jina.ai/"
     TIMEOUT = 10.0
     
     def __init__(self, max_content_length: int = 6000):
+        """
+        Initialize the scraper.
+
+        Args:
+            max_content_length (int): Maximum characters to keep per page.
+        """
         self.max_content_length = max_content_length
     
     async def scrape_url(self, url: str) -> Optional[str]:
         """
-        Scrapes the content of a single URL using Jina's web scraper.
+        Scrapes a single URL.
 
         Args:
-            url: The URL to scrape.
+            url (str): The URL to scrape.
 
         Returns:
-            Optional[str]: The scraped content as a string, or None if scraping failed.
+            Optional[str]: The text content, or None if scraping failed.
         """
         async with httpx.AsyncClient(timeout=self.TIMEOUT) as client:
-            
             try:
                 jina_url = f"{self.BASE_URL}{url}"
                 
@@ -40,37 +47,39 @@ class JinaWebScraper:
                 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
+                    log_scrape(f"Rate limited (429) for {url[:50]}...", level="warning")
                     return None
                 log_scrape(f"HTTP {e.response.status_code} for {url[:50]}...", level="warning")
                 return None
             
-            except Exception as e:
+            except Exception:
                 return None
     
     async def scrape_multiple(self, urls: List[str], max_concurrent: int = 10) -> List[Dict]:
         """
-        Scrapes multiple URLs concurrently.
+        Scrapes multiple URLs concurrently with a semaphore limit.
 
         Args:
-            urls: A list of URLs.
-            max_concurrent: Maximum number of concurrent requests.
+            urls (List[str]): List of URLs to scrape.
+            max_concurrent (int): Max number of simultaneous requests.
 
         Returns:
-            List[Dict]: A list of dictionaries with 'url' and 'content' keys of scraped data:
-                [{"url": str, "content": str}, ...]
+            List[Dict]: A list of successful scrapes. Each dict contains:
+                - url (str): The source URL.
+                - content (str): The scraped text.
         """
         semaphore = asyncio.Semaphore(max_concurrent)
         
-        async def scrape_one(url: str):
+        async def _scrape_with_semaphore(target_url: str) -> Optional[Dict]:
             async with semaphore:
-                content = await self.scrape_url(url)
+                content = await self.scrape_url(target_url)
                 if content:
-                    return {"url": url, "content": content}
+                    return {"url": target_url, "content": content}
                 return None
         
-        log_scrape(f"Scraping {len(urls)} URLs (max {max_concurrent} at once)...")
+        log_scrape(f"Scraping {len(urls)} URLs")
         
-        tasks = [scrape_one(url) for url in urls]
+        tasks = [_scrape_with_semaphore(url) for url in urls]
         results = await asyncio.gather(*tasks)
         
         valid_results = [r for r in results if r is not None]

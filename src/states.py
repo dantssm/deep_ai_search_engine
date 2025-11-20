@@ -1,16 +1,16 @@
-"""States with quality metrics and structured results."""
+"""States with quality metrics and structured results"""
 
 from typing import TypedDict, List, Optional, Dict
 
 
 class RAGContext(TypedDict):
-    """RAG collection context."""
+    """Metadata about the vector store collection for a specific topic"""
     collection_id: str
     chunks_indexed: int
 
 
 class QualityMetrics(TypedDict):
-    """Quality metrics for research results."""
+    """Metrics to evaluate the success of a research task"""
     confidence: float
     source_count: int
     iterations_used: int
@@ -18,7 +18,7 @@ class QualityMetrics(TypedDict):
 
 
 class RetryInfo(TypedDict):
-    """Retry tracking for failed topics."""
+    """Metadata for tracking failed attempts at a topic"""
     topic: str
     attempt: int
     last_error: str
@@ -31,13 +31,14 @@ class ResearcherState(TypedDict):
     
     searches: List[str]
     scraped_urls: List[str]
+
     rag: RAGContext
+    scraped_content: List[dict]
+    retrieved_chunks: List[dict]
+
     reflections: List[Dict]
     iteration: int
     max_iterations: int
-    
-    scraped_content: List[dict]
-    retrieved_chunks: List[dict]
     
     findings: str
     sources: List[dict]
@@ -46,7 +47,7 @@ class ResearcherState(TypedDict):
 
 
 class OrchestratorState(TypedDict):
-    """State for orchestrator agent."""
+    """The global memory of the Orchestrator. Scope: The entire user session"""
     query: str
     depth: str
     sub_topics: List[str]

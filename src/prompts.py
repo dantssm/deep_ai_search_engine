@@ -4,19 +4,20 @@ from typing import List, Dict
 
 
 def get_topic_breakdown_prompt(query: str, num_topics: int) -> str:
-    """Generate prompt for breaking query into sub-topics."""
+    """Generate prompt for breaking query into sub-topics"""
     return f"""Break this research question into {num_topics} specific sub-topics:
 
 Question: "{query}"
 
 RULES:
-- Each sub-topic MUST include the main subject from the query
-- Be SPECIFIC and SEARCHABLE (good for Google Search)
-- Cover different aspects of the question
-- Generate EXACTLY {num_topics} topics, one per line
-- NO numbering, NO markdown formatting
+1. Each sub-topic MUST include the main subject from the query.
+2. Be SPECIFIC and SEARCHABLE (good for Google Search).
+3. Cover different aspects of the question.
+4. Generate EXACTLY {num_topics} topics, one per line
+5. NO numbering, NO markdown formatting
 
-Example for "How does quantum computing work?":
+Example Input: "How does quantum computing work?"
+Example Output:
 Quantum computing basic principles and qubits
 Quantum algorithms and quantum gates explained
 Current quantum computers and their applications
@@ -32,9 +33,8 @@ def get_reasoning_prompt(query: str) -> str:
 Focus on what angles we'll explore and why."""
 
 
-def get_refinement_prompt(query: str, current_topics: List[str], 
-                         feedback: str, num_topics: int) -> str:
-    """Generate prompt for refining research plan based on feedback."""
+def get_refinement_prompt(query: str, current_topics: List[str], feedback: str, num_topics: int) -> str:
+    """Generate prompt for refining research plan based on feedback"""
     topics_list = '\n'.join(f"- {t}" for t in current_topics)
     
     return f"""Refine this research plan based on user feedback.
@@ -53,9 +53,8 @@ Generate {num_topics} improved sub-topics that address the feedback.
 - Be specific and searchable"""
 
 
-def get_reflection_prompt(topic: str, parent_query: str, context: str, 
-                          searches: List[str], num_chunks: int) -> str:
-    """Generate prompt for research reflection and decision-making."""
+def get_reflection_prompt(topic: str, parent_query: str, context: str, searches: List[str], num_chunks: int) -> str:
+    """Generate prompt for research reflection and decision-making"""
     return f"""Analyze research progress on: "{topic}"
 
 Parent Question: "{parent_query}"
@@ -70,11 +69,10 @@ Evaluate the quality of retrieved information and decide next steps.
 Return valid JSON with this structure:
 {{
     "facts_learned": ["fact1", "fact2"],
-    "gaps": ["gap1", "gap2"],
+    "gaps": ["missing info 1", "missing info 2"],
     "confidence": 0.0-1.0,
-    "content_quality": "high|medium|low",
     "continue_research": true|false,
-    "next_query": "better search query"
+    "next_query": "specific search query to fill gaps"
 }}
 
 Rules:
@@ -85,7 +83,7 @@ Rules:
 
 
 def get_summarization_prompt(topic: str, parent_query: str, facts: List[str], sources: List[str]) -> str:
-    """Generate prompt for final summary of research findings."""
+    """Generate prompt for final summary of research findings"""
     facts_text = '\n'.join(f"- {f}" for f in facts[:20])
     sources_text = '\n'.join(sources)
     
@@ -124,9 +122,8 @@ RIGHT (with citations):
 Write the summary now (3-5 sentences with citations):"""
 
 
-def get_followup_topics_prompt(query: str, completed: List[Dict], 
-                              gaps: List[str], avg_confidence: float) -> str:
-    """Generate prompt for identifying research gaps and new topics."""
+def get_followup_topics_prompt(query: str, completed: List[Dict], gaps: List[str], avg_confidence: float) -> str:
+    """Generate prompt for identifying research gaps and new topics"""
     completed_text = '\n'.join(f"- {r['topic']}" for r in completed)
     gaps_text = '\n'.join(f"- {g}" for g in gaps[:5])
     
@@ -194,7 +191,7 @@ REPORT STRUCTURE:
 
 WRITING STYLE:
 - Write in ONE unified voice
-- State facts confidently: "Minaj holds the record [1]"
+- State facts confidently: "Nicki Minaj holds the record [1]"
 - Use specific numbers, names, dates from sources
 - Be direct - no "the research shows" or "according to findings"
 - NO meta-commentary about the research process
@@ -203,7 +200,7 @@ Now write the complete research report (1500-2000 words):"""
 
 
 def format_sources_for_synthesis(sources: List[Dict], max_sources: int = 40) -> str:
-    """Format sources for synthesis prompt with clear numbering."""
+    """Format sources for synthesis prompt with clear numbering"""
     formatted = []
     for s in sources[:max_sources]:
         source_id = s.get('id', 0)
@@ -215,7 +212,7 @@ def format_sources_for_synthesis(sources: List[Dict], max_sources: int = 40) -> 
 
 
 def format_context_chunks(chunks: List[Dict]) -> str:
-    """Format retrieved chunks for reflection prompt."""
+    """Format retrieved chunks for reflection prompt"""
     context_parts = []
     for i, chunk in enumerate(chunks[:5], 1):
         relevance = chunk.get("score", 0)

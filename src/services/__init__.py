@@ -1,13 +1,7 @@
-"""Services package exposing LLM and Session utilities."""
+"""Services package exposing LLM and Session utilities"""
 
 from .llm import LLMTier, GeminiLLM
-from .session_manager import (
-    get_session_manager,
-    set_current_session,
-    get_current_session,
-    get_current_services,
-    get_memory_stats
-)
+from .session_manager import get_session_manager, set_current_session, get_current_session, get_current_services, get_memory_stats
 
 def get_cache():
     return get_current_services().get_cache()

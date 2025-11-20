@@ -1,4 +1,4 @@
-"""Centralized logging configuration with WebSocket broadcast support."""
+"""Logging Utility with WebSocket Broadcast"""
 
 import logging
 import sys
@@ -10,18 +10,18 @@ _log_callbacks: List[Callable[[str], None]] = []
 _callbacks_lock = threading.Lock()
 
 def add_log_callback(callback: Callable[[str], None]):
-    """Register a callback to receive log messages (thread-safe)."""
+    """Register a WebSocket function to receive log updates"""
     with _callbacks_lock:
         _log_callbacks.append(callback)
 
 def remove_log_callback(callback: Callable[[str], None]):
-    """Remove a registered callback (thread-safe)."""
+    """Unregister a WebSocket function"""
     with _callbacks_lock:
         if callback in _log_callbacks:
             _log_callbacks.remove(callback)
 
 def broadcast_log(msg: str):
-    """Send log message to all registered callbacks (thread-safe)."""
+    """Push a log message to all connected clients"""
     with _callbacks_lock:
         callbacks_copy = _log_callbacks.copy()
     
@@ -39,7 +39,6 @@ def broadcast_log(msg: str):
             pass
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colors for terminal output."""
     COLORS = {
         'DEBUG': '\033[36m',
         'INFO': '\033[32m',
@@ -56,8 +55,7 @@ class ColoredFormatter(logging.Formatter):
 
 def setup_logger(name: str = "research", level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
-    if logger.handlers:
-        return logger
+    if logger.handlers: return logger
     logger.setLevel(level)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)

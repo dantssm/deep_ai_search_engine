@@ -1,3 +1,5 @@
+"""Main Application. This is the entry point for the web server"""
+
 import os
 import uuid
 import asyncio
@@ -14,7 +16,7 @@ from src.pipeline import DeepResearchPipeline
 from src.utils.logger import log_pipeline, add_log_callback, remove_log_callback
 from src.services import get_session_manager, set_current_session, get_memory_stats
 
-app = FastAPI(title="AI Open Deep Research Engine", version="4.0")
+app = FastAPI(title="AI Open Deep Research Engine", version="4.1.0")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -30,7 +32,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _pipelines = {}
 
-log_pipeline("Open Deep Research Engine Ready (Refactored)")
+log_pipeline("Open Deep Research Engine is ready")
 
 @app.get("/")
 async def home():
@@ -177,3 +179,4 @@ async def startup_event():
             get_session_manager().cleanup_old_sessions(max_age_seconds=3600)
             
     asyncio.create_task(periodic_cleanup())
+    

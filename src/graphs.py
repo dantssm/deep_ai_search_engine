@@ -1,24 +1,23 @@
-"""LangGraph definitions for orchestrator and researcher."""
+"""LangGraph definitions for orchestrator and researcher"""
 
 from langgraph.graph import StateGraph, START, END
 from src.states import ResearcherState, OrchestratorState
-from src.nodes.researcher import (
-    search_node, scrape_and_index_node, retrieve_node,
-    reflect_node, summarize_node, should_continue
-)
-from src.nodes.orchestrator import (
-    plan_node, dispatch_node, critique_node,
-    synthesize_node, should_continue_orchestrator
-)
+from src.nodes.researcher import search_node, scrape_and_index_node, retrieve_node, reflect_node, summarize_node, should_continue
+from src.nodes.orchestrator import plan_node, dispatch_node, critique_node, synthesize_node, should_continue_orchestrator
 
 
 def build_researcher_graph():
     """
-    Researcher graph: Investigates a single topic.
+    Builds the graph for a single researcher agent.
     
-    Flow: search → scrape+index → retrieve → reflect
-            ↑_____________________________________|
-            (loops until max iterations or done)
+    Workflow:
+    1. search: Google Custom Search
+    2. scrape_index: Jina Reader -> ChromaDB
+    3. retrieve: Hybrid Search from ChromaDB
+    4. reflect: LLM checks if we have enough info
+       -> If NO: Loop back to 'search' (with new query)
+       -> If YES: Move to 'summarize'
+    5. summarize: Write final answer with citations
     """
     g = StateGraph(ResearcherState)
     
@@ -45,11 +44,15 @@ def build_researcher_graph():
 
 def build_orchestrator_graph():
     """
-    Orchestrator graph: Coordinates multiple researchers.
+    Builds the master graph that manages the entire session.
     
-    Flow: plan → dispatch → critique → synthesize
-                    ↑_________|
-                    (loops if needed)
+    Workflow:
+    1. plan: Generate sub-topics
+    2. dispatch: Run parallel Researcher Graphs
+    3. critique: Check if confidence is high enough
+       -> If LOW: Generate new sub-topics -> Loop back to 'dispatch'
+       -> If HIGH: Move to 'synthesize'
+    4. synthesize: Compile final report
     """
     g = StateGraph(OrchestratorState)
     
