@@ -1,4 +1,7 @@
+"""Prompt templates for research pipeline."""
+
 from typing import List, Dict
+
 
 def get_topic_breakdown_prompt(query: str, num_topics: int) -> str:
     """Generate prompt for breaking query into sub-topics."""
@@ -51,26 +54,18 @@ Generate {num_topics} improved sub-topics that address the feedback.
 
 
 def get_reflection_prompt(topic: str, parent_query: str, context: str, 
-                          coverage: Dict, searches: List[str]) -> str:
-    """Generate prompt for research reflection and decision-making.
-    
-    This prompt uses JSON mode for reliable structured output.
-    """
+                          searches: List[str], num_chunks: int) -> str:
+    """Generate prompt for research reflection and decision-making."""
     return f"""Analyze research progress on: "{topic}"
 
 Parent Question: "{parent_query}"
 
-Retrieved Content:
+Retrieved Content ({num_chunks} chunks):
 {context}
-
-Coverage Analysis:
-- Coverage Score: {coverage.get('coverage_score', 0):.1%}
-- Answered: {', '.join(coverage.get('answered_aspects', [])) if coverage.get('answered_aspects') else 'None'}
-- Missing: {', '.join(coverage.get('missing_aspects', [])) if coverage.get('missing_aspects') else 'None'}
 
 Previous Searches: {', '.join(searches)}
 
-Evaluate quality and decide next steps.
+Evaluate the quality of retrieved information and decide next steps.
 
 Return valid JSON with this structure:
 {{
@@ -83,15 +78,16 @@ Return valid JSON with this structure:
 }}
 
 Rules:
-- confidence should reflect coverage and content quality
-- If coverage < 50%, continue_research should be true
-- next_query should target missing aspects
+- confidence should reflect content quality and completeness
+- If chunks are insufficient or low quality, continue_research should be true
+- next_query should target identified gaps
 - If no new info in last 2 searches, stop"""
 
 
-def get_summarization_prompt(topic: str, parent_query: str, facts: List[str]) -> str:
+def get_summarization_prompt(topic: str, parent_query: str, facts: List[str], sources: List[str]) -> str:
     """Generate prompt for final summary of research findings."""
     facts_text = '\n'.join(f"- {f}" for f in facts[:20])
+    sources_text = '\n'.join(sources)
     
     return f"""Write a focused research summary about: "{topic}"
 
@@ -100,27 +96,33 @@ This is part of a larger report on: "{parent_query}"
 Key Information Found:
 {facts_text}
 
+Sources Available for Citation:
+{sources_text}
+
 Write a clear, factual summary (3-5 sentences) that:
 1. States WHAT was found (specific facts, numbers, names)
-2. Presents information DIRECTLY - no meta-commentary
-3. Acknowledges different viewpoints if they exist
-4. Uses CONCRETE language - no "unclear" or "under investigation"
-5. Writes as if YOU discovered this information
+2. CITES sources using [1], [2], [3] format for ALL factual claims
+3. Presents information DIRECTLY - no meta-commentary
+4. Acknowledges different viewpoints if they exist
+5. Uses CONCRETE language - no "unclear" or "under investigation"
 
 CRITICAL: Write in a UNIFIED voice. This will be integrated into a larger report.
 
-WRONG EXAMPLES (never do this):
-- "The research summary indicates that vaccines work by..."
-- "According to the summary, studies show..."
-- "Research Summary: Vaccines work by..."
-- "Summary of findings: ..."
+CITATION REQUIREMENTS:
+- Every factual claim MUST have a citation: "MC Lyte was a pioneer [1]"
+- Use ONLY the numbered sources above [1], [2], [3]...
+- Multiple sources: "This is supported by research [1, 2, 3]"
+- DO NOT write without citations
 
-RIGHT EXAMPLES (do this):
-- "Vaccines work by introducing antigens that trigger..."
-- "Studies demonstrate that B cells respond to..."
-- "The immune system recognizes pathogens through..."
+WRONG (no citations):
+- "MC Lyte was a pioneer in hip hop"
 
-Write the summary now (3-5 sentences, direct voice):"""
+RIGHT (with citations):
+- "MC Lyte [1] was a pioneer in hip hop [1, 2]"
+- "Queen Latifah [3] and MC Lyte [1] were pioneers [1, 3]"
+
+Write the summary now (3-5 sentences with citations):"""
+
 
 def get_followup_topics_prompt(query: str, completed: List[Dict], 
                               gaps: List[str], avg_confidence: float) -> str:
@@ -142,106 +144,62 @@ Output exactly 3 lines, no numbering."""
 
 
 def get_synthesis_prompt(query: str, findings_by_topic: str, source_list: str) -> str:
-    """Generate prompt for final report synthesis with CLEAR citation instructions.
-    
-    UPDATED: Much clearer instructions about citation format and what NOT to cite.
-    """
-    
-    # Count number of sources for the prompt
+    """Generate prompt for final report synthesis."""
     num_sources = len([line for line in source_list.split('\n') if line.strip().startswith('[')])
     
     return f"""You are writing a comprehensive research report on: "{query}"
 
-Below are research findings from multiple research areas. Your job is to synthesize this into ONE cohesive report.
+Below are research findings from multiple topics. Each finding already has citations in [N] format.
 
-═══════════════════════════════════════════════════════════════
-RESEARCH FINDINGS:
-═══════════════════════════════════════════════════════════════
+RESEARCH FINDINGS (already cited):
 
 {findings_by_topic}
 
-═══════════════════════════════════════════════════════════════
-SOURCES AVAILABLE TO CITE:
-═══════════════════════════════════════════════════════════════
+SOURCES LIST:
 
 {source_list}
 
-═══════════════════════════════════════════════════════════════
-❌ CRITICAL - CITATION RULES - READ VERY CAREFULLY ❌
-═══════════════════════════════════════════════════════════════
+YOUR JOB:
+1. Synthesize these findings into ONE cohesive, well-structured report
+2. PRESERVE all existing citations [1], [2], [3] from the findings
+3. You can reorganize, rewrite, and combine findings for better flow
+4. You can add citations to additional claims if needed
+5. Remove redundant information but keep all important facts
 
-YOU **MUST** CITE SOURCES USING **ONLY** THIS FORMAT: [1], [2], [3]
+CITATION RULES:
+- Keep all existing citations from findings: if findings say "MC Lyte [1]", preserve [1]
+- Use ONLY numbered sources [1] through [{num_sources}]
+- Format: [1], [2], [3] or [1, 2, 3] for multiple
+- Every factual claim should have a citation
+- NEVER use formats like [R1], [Topic 1], or [Research Area]
 
-✅ CORRECT EXAMPLES:
-- "Nicki Minaj has sold over 100 million records [1]."
-- "Early pioneers like MC Lyte [2] and Queen Latifah [3] established..."
-- "Studies show conflicting results [1, 2, 3]."
-
-❌ WRONG - NEVER DO THIS:
-- "According to the research findings..." ← NO CITATIONS = WRONG
-- "[Research Area 1]" ← NOT A CITATION
-- "[Commercial success]" ← NOT A CITATION  
-- "[Criteria and characteristics]" ← NOT A CITATION
-- No citation at all ← ALWAYS CITE CLAIMS
-
-🔴 EVERY FACTUAL CLAIM **MUST** HAVE [1], [2], [3] etc.
-🔴 The findings contain "Research Area X:" labels - IGNORE THESE, they are NOT citations
-🔴 Use ONLY the numbered sources [1] through [{num_sources}] from the list above
-🔴 Do NOT reference research areas or topics - only cite numbered sources
-
-CITATION REQUIREMENTS:
-1. EVERY factual claim MUST have a citation [1], [2], etc.
-2. Use ONLY the numbered sources from the list above
-3. NEVER invent citation formats - ONLY use [1], [2], [3]...
-4. You can cite multiple sources: [1, 2, 3]
-5. When sources disagree: "Source [1] claims X, while [2] argues Y"
-6. Cite specific sources, not "research areas" or "topics"
-
-═══════════════════════════════════════════════════════════════
 REPORT STRUCTURE:
-═══════════════════════════════════════════════════════════════
 
-Write your report with these sections:
+1. Executive Summary (2-3 paragraphs)
+   - Direct answer to the query
+   - Key findings with citations
 
-1. **Executive Summary** (2-3 paragraphs)
-   - Direct answer with citations [1], [2], etc.
-   - Key findings with source references
+2. Detailed Analysis (5-8 paragraphs)
+   - Synthesize findings by theme (not by topic)
+   - Every claim cited
 
-2. **Detailed Analysis** (5-8 paragraphs)
-   - Every claim needs [1], [2], [3] etc.
-   - Present different perspectives when sources disagree
+3. Key Findings (3-5 bullet points)
+   - Each with citations
 
-3. **Key Findings** (3-5 bullet points)
-   - Each bullet MUST have [X] citations
+4. Different Perspectives (if sources disagree)
+   - Present conflicting viewpoints with citations
 
-4. **Different Perspectives** (if sources disagree)
-   - Present conflicting viewpoints
-   - Cite which source says what
+5. Conclusion (1-2 paragraphs)
+   - Summary with citations
 
-5. **Conclusion** (1-2 paragraphs)
-   - Summary with [X] citations
-
-═══════════════════════════════════════════════════════════════
-WRITING STYLE RULES:
-═══════════════════════════════════════════════════════════════
-
-DO THIS:
-- Write in ONE unified voice (this is YOUR report)
-- State facts confidently: "Minaj holds the record [1]..."
+WRITING STYLE:
+- Write in ONE unified voice
+- State facts confidently: "Minaj holds the record [1]"
 - Use specific numbers, names, dates from sources
-- Integrate citations naturally into sentences
-- Be ASSERTIVE with proper citations
+- Be direct - no "the research shows" or "according to findings"
+- NO meta-commentary about the research process
 
-NEVER DO THIS:
-- "The research findings show..." ← Write directly
-- "According to Research Area 2..." ← NEVER cite research areas
-- "Research Area: Commercial success shows..." ← NEVER cite this way
-- Vague language like "unclear" or "under investigation"
-- Missing citations on factual claims
-
-═══════════════════════════════════════════════════════════════
-
-Now write the complete research report (1500-2000 words) with PROPER numbered source citations [1], [2], [3], etc.:"""
+Now write the complete research report (1500-2000 words):"""
 
 
 def format_sources_for_synthesis(sources: List[Dict], max_sources: int = 40) -> str:
@@ -254,21 +212,6 @@ def format_sources_for_synthesis(sources: List[Dict], max_sources: int = 40) -> 
         formatted.append(f"[{source_id}] {title}\n    URL: {url}")
     
     return '\n\n'.join(formatted)
-
-
-def format_findings_by_topic(completed: List[Dict]) -> str:
-    """Format research findings by topic for synthesis.
-    
-    CHANGED: Use 'Research Area X:' instead of 'Sub-topic:' to avoid citation confusion.
-    This makes it clear these are section headers, not citation references.
-    """
-    formatted = []
-    for i, r in enumerate(completed, 1):
-        topic = r['topic']
-        findings = r['findings']
-        formatted.append(f"Research Area {i}: {topic}\n{findings}")
-    
-    return '\n\n───────────────────────────────────────\n\n'.join(formatted)
 
 
 def format_context_chunks(chunks: List[Dict]) -> str:

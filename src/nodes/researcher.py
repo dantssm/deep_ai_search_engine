@@ -1,3 +1,5 @@
+"""Researcher graph nodes."""
+
 from typing import Dict, List
 from src.states import ResearcherState
 from src.services import get_llm, LLMTier
@@ -8,62 +10,22 @@ from src.prompts import (
     format_context_chunks
 )
 
+
 class ResearcherError(Exception):
     """Raised when researcher encounters unrecoverable error."""
     pass
 
-def is_valid_search_result(result: dict) -> bool:
-    """Check if search result is valid (minimal filtering)."""
-    text = (result.get("title", "") + " " + result.get("snippet", "")).lower()
 
+def is_valid_search_result(result: dict) -> bool:
+    """Check if search result is valid."""
+    text = (result.get("title", "") + " " + result.get("snippet", "")).lower()
     error_patterns = ["404 not found", "page not found", "access denied"]
+    
     if any(pattern in text for pattern in error_patterns):
         return False
     
     return len(text) >= 15
 
-
-def analyze_content_coverage(chunks: List[Dict], query: str) -> dict:
-    """Analyze how well retrieved content covers the query."""
-    if not chunks:
-        return {
-            "coverage_score": 0.0,
-            "answered_aspects": [],
-            "missing_aspects": ["No content retrieved"]
-        }
-    
-    aspects = []
-    for separator in [" and ", " or ", ", "]:
-        if separator in query.lower():
-            aspects = [a.strip() for a in query.lower().split(separator)]
-            break
-    
-    if not aspects:
-        aspects = [query.lower()]
-    
-    all_content = " ".join(c.get("content", "").lower() for c in chunks)
-    stop_words = {"the", "a", "an", "and", "or"}
-    
-    answered = []
-    missing = []
-    
-    for aspect in aspects:
-        aspect_terms = set(aspect.split()) - stop_words
-        if any(term in all_content for term in aspect_terms):
-            answered.append(aspect)
-        else:
-            missing.append(aspect)
-    
-    coverage_score = len(answered) / len(aspects) if aspects else 0.0
-    
-    if chunks and len(all_content) > 200:
-        coverage_score = max(0.5, coverage_score)
-    
-    return {
-        "coverage_score": coverage_score,
-        "answered_aspects": answered,
-        "missing_aspects": missing
-    }
 
 async def search_node(state: ResearcherState) -> dict:
     """Search for information on the topic."""
@@ -79,7 +41,6 @@ async def search_node(state: ResearcherState) -> dict:
     
     try:
         results = await get_searcher().search(query, num_results=10)
-        
         valid_results = [r for r in results if is_valid_search_result(r)]
         
         if len(valid_results) < len(results):
@@ -123,7 +84,6 @@ async def scrape_and_index_node(state: ResearcherState) -> dict:
     
     try:
         results = await get_scraper().scrape_multiple(to_scrape)
-        
         valid_scrapes = [r for r in results if r and len(r.get("content", "")) > 100]
         
         if valid_scrapes:
@@ -153,7 +113,6 @@ async def retrieve_node(state: ResearcherState) -> dict:
     
     try:
         store = get_rag_store()
-
         chunks = await store.search(
             state["rag"]["collection_id"], 
             state["topic"], 
@@ -162,7 +121,6 @@ async def retrieve_node(state: ResearcherState) -> dict:
             use_query_expansion=True,
             use_mmr=True
         )
-        
         return {"retrieved_chunks": chunks}
     except Exception as e:
         log_researcher(f"Retrieve error: {e}", level="error")
@@ -170,20 +128,17 @@ async def retrieve_node(state: ResearcherState) -> dict:
 
 
 async def reflect_node(state: ResearcherState) -> dict:
-    """Reflect on progress and decide next steps using JSON mode.
-    
-    BALANCED: Early stopping at 70% coverage (was 60% in fast version).
-    Allows continuation when needed for better depth.
-    """
+    """Reflect on progress and decide next steps."""
     iter_count = state["iteration"] + 1
     
     if iter_count >= state["max_iterations"]:
         return {"iteration": iter_count}
     
-    coverage = analyze_content_coverage(state["retrieved_chunks"], state["topic"])
-    log_researcher(f"Coverage: {coverage['coverage_score']:.1%}")
+    num_chunks = len(state["retrieved_chunks"])
+    log_researcher(f"Retrieved {num_chunks} chunks")
     
-    if coverage['coverage_score'] >= 0.7 and len(state["retrieved_chunks"]) >= 6:
+    if num_chunks >= 8:
+        log_researcher("Sufficient content retrieved, stopping early")
         return {
             "reflections": state["reflections"] + [{
                 "facts_learned": [c.get("content", "")[:100] for c in state["retrieved_chunks"][:5]],
@@ -196,13 +151,12 @@ async def reflect_node(state: ResearcherState) -> dict:
         }
     
     context = format_context_chunks(state["retrieved_chunks"])
-    
     prompt = get_reflection_prompt(
         topic=state["topic"],
         parent_query=state.get("parent_query", state["topic"]),
         context=context,
-        coverage=coverage,
-        searches=state["searches"]
+        searches=state["searches"],
+        num_chunks=num_chunks
     )
     
     try:
@@ -218,18 +172,15 @@ async def reflect_node(state: ResearcherState) -> dict:
         data.setdefault("continue_research", False)
         data.setdefault("next_query", "")
         
-        # CHANGED: More nuanced confidence scoring
-        if coverage['coverage_score'] >= 0.6:
+        if num_chunks >= 6:
             data['confidence'] = max(data.get('confidence', 0.5), 0.65)
-        elif coverage['coverage_score'] >= 0.5:
-            data['confidence'] = max(data.get('confidence', 0.5), 0.55)
         
-        # CHANGED: Continue if coverage is below 60% (was 50%)
-        if coverage['coverage_score'] < 0.6 and len(state["retrieved_chunks"]) < 7:
+        if num_chunks < 5:
             data['continue_research'] = True
-            
-            if not data.get('next_query') and coverage['missing_aspects']:
-                data['next_query'] = f"{state['topic']} {coverage['missing_aspects'][0]}"
+            if not data.get('next_query'):
+                gaps = data.get('gaps', [])
+                if gaps:
+                    data['next_query'] = f"{state['topic']} {gaps[0]}"
         else:
             data['continue_research'] = False
         
@@ -238,13 +189,11 @@ async def reflect_node(state: ResearcherState) -> dict:
         return {
             "reflections": state["reflections"] + [data],
             "iteration": iter_count,
-            "gaps": state.get("gaps", []) + data.get("gaps", []),
-            "coverage": coverage
+            "gaps": state.get("gaps", []) + data.get("gaps", [])
         }
         
     except Exception as e:
         log_researcher(f"Reflection failed: {e}", level="warning")
-
         return {
             "reflections": state["reflections"] + [{
                 "confidence": 0.55,
@@ -267,10 +216,16 @@ async def summarize_node(state: ResearcherState) -> dict:
     if not facts:
         facts = [c.get("content", "")[:100] for c in state["retrieved_chunks"][:5]]
     
+    sources_list = []
+    for i, source in enumerate(state["sources"], 1):
+        title = source.get("title", "Untitled")[:60]
+        sources_list.append(f"[{i}] {title}")
+    
     prompt = get_summarization_prompt(
         topic=state["topic"],
         parent_query=state.get("parent_query", state["topic"]),
-        facts=facts
+        facts=facts,
+        sources=sources_list
     )
     
     try:
@@ -281,27 +236,26 @@ async def summarize_node(state: ResearcherState) -> dict:
         summary = summary.replace("According to the summary,", "").strip()
         summary = summary.replace("The research summary", "Research").strip()
         
-        reflections = [r for r in state["reflections"] if isinstance(r, dict)]
-        confidences = [r.get("confidence", 0) for r in reflections]
-        avg_conf = sum(confidences) / len(confidences) if confidences else 0.5
+        num_chunks = len(state["retrieved_chunks"])
         
-        coverage = state.get("coverage", {})
-        coverage_score = coverage.get("coverage_score", 0.5)
-        
-        if state["retrieved_chunks"] and len(state["retrieved_chunks"]) >= 3:
-            coverage_score = max(0.5, coverage_score)
-            avg_conf = max(0.5, avg_conf)
-        
-        final_confidence = (avg_conf * 0.6) + (coverage_score * 0.4)
+        if num_chunks >= 8:
+            final_confidence = 0.70
+        elif num_chunks >= 6:
+            final_confidence = 0.65
+        elif num_chunks >= 5:
+            final_confidence = 0.60
+        else:
+            reflections = [r for r in state["reflections"] if isinstance(r, dict)]
+            confidences = [r.get("confidence", 0) for r in reflections]
+            final_confidence = sum(confidences) / len(confidences) if confidences else 0.5
         
         return {
             "findings": summary,
             "quality_metrics": {
                 "confidence": final_confidence,
                 "source_count": len(state["sources"]),
-                "coverage_score": coverage_score,
                 "iterations_used": state["iteration"],
-                "chunks_retrieved": len(state["retrieved_chunks"])
+                "chunks_retrieved": num_chunks
             }
         }
     except Exception as e:

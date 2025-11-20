@@ -140,7 +140,6 @@ body {
   color: var(--text-main);
 }
 
-/* Depth Selector */
 .depth-selector { display: flex; align-items: center; gap: 16px; justify-content: center; margin-bottom: 40px; }
 .depth-label { font-weight: 500; }
 
@@ -181,8 +180,31 @@ body {
 }
 
 .output-content { flex: 1; line-height: 1.8; color: var(--text-sub); }
-.output-content h1, .output-content h2, .output-content h3 { color: var(--text-main); margin-top: 1.5em; margin-bottom: 0.5em; }
+.output-content h1, .output-content h2, .output-content h3, .output-content h4, .output-content h5, .output-content h6 { 
+  color: var(--text-main); 
+  margin-top: 1.5em; 
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.output-content h1 { font-size: 2rem; }
+.output-content h2 { font-size: 1.75rem; }
+.output-content h3 { font-size: 1.5rem; }
+.output-content h4 { font-size: 1.25rem; }
+.output-content h5 { font-size: 1.1rem; }
+.output-content h6 { font-size: 1rem; font-weight: 700; }
+
 .output-content p { margin-bottom: 1em; text-align: justify; }
+
+.output-content ul {
+  margin-left: 2em;
+  margin-bottom: 1em;
+}
+
+.output-content li {
+  margin-bottom: 0.5em;
+  line-height: 1.6;
+}
 
 .source-link, .ref-link {
   color: var(--accent);
@@ -256,7 +278,7 @@ body {
 @media (max-width: 900px) {
   .title { font-size: 2.5rem; }
   .input-group, .plan-layout, .output-layout, .bottom-actions { flex-direction: column; }
-  .plan-sidebar, .logs-panel { width: 90%; right: 5%; bottom: 80px; } /* Center float on mobile */
+  .plan-sidebar, .logs-panel { width: 90%; right: 5%; bottom: 80px; }
   .output-layout { height: auto; min-height: 400px; }
   .btn { width: 100%; }
 }

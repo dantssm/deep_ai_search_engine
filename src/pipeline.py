@@ -1,9 +1,4 @@
-"""Main research pipeline with session isolation and JSON-based results.
-
-UPDATES:
-- Now uses prompts from src.prompts module
-- Cleaner separation of logic and instructions
-"""
+"""Main research pipeline with session isolation and JSON-based results."""
 
 from typing import Dict, Optional, Callable, Awaitable
 from datetime import datetime
@@ -96,7 +91,7 @@ class DeepResearchPipeline:
         plan: Dict,
         on_progress: Optional[Callable[[str], Awaitable]] = None
     ) -> Dict:
-        """Execute research (non-streaming version) - returns structured JSON."""
+        """Execute research and return structured JSON."""
         set_current_session(self.session_id)
         
         max_iters = DEPTH_PARAMS.get(plan["depth"], DEPTH_PARAMS["standard"]).get("max_searches", 3)
@@ -158,7 +153,7 @@ class DeepResearchPipeline:
         on_progress: Optional[Callable[[str], Awaitable]] = None,
         ws = None
     ) -> Dict:
-        """Execute research with streaming synthesis - returns structured JSON."""
+        """Execute research with streaming synthesis."""
         set_current_session(self.session_id)
         
         max_iters = DEPTH_PARAMS.get(plan["depth"], DEPTH_PARAMS["standard"]).get("max_searches", 3)

@@ -184,7 +184,7 @@ function startResearch() {
 
     showScreen('research');
     updateStatusLabel('Starting research...');
-    document.getElementById('outputContent').textContent = ''; // Clear previous
+    document.getElementById('outputContent').textContent = '';
 
     sendToServer({
         type: 'execute_research',
@@ -236,12 +236,47 @@ function renderFinalResult(result) {
     });
 
     text = text
+        .replace(/^###### (.+)$/gm, '<h6>$1</h6>')
+        .replace(/^##### (.+)$/gm, '<h5>$1</h5>')
+        .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/^## (.+)$/gm, '<h2>$1</h2>')
         .replace(/^# (.+)$/gm, '<h1>$1</h1>')
         .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    const lines = text.split('\n');
+    let inList = false;
+    let processedLines = [];
+    
+    for (let line of lines) {
+        const trimmed = line.trim();
+        
+        if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+            if (!inList) {
+                processedLines.push('<ul>');
+                inList = true;
+            }
+            processedLines.push(`<li>${trimmed.substring(2)}</li>`);
+        } else {
+            if (inList) {
+                processedLines.push('</ul>');
+                inList = false;
+            }
+            if (trimmed) {
+                processedLines.push(line);
+            }
+        }
+    }
+    
+    if (inList) {
+        processedLines.push('</ul>');
+    }
+    
+    text = processedLines.join('\n\n');
+
+    text = text
         .replace(/\n\n/g, '</p><p>')
         .replace(/\n/g, '<br>');
 

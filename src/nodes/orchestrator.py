@@ -1,68 +1,26 @@
+"""Orchestrator graph nodes"""
+
 import asyncio
 import hashlib
 import re
 from typing import List, Dict, Set
-from collections import Counter
 from src.states import OrchestratorState, ResearcherState
 from src.services import get_llm, LLMTier
 from src.utils.logger import log_orchestrator
-from src.prompts import (
-    get_followup_topics_prompt,
-    get_synthesis_prompt,
-    format_sources_for_synthesis,
-    format_findings_by_topic
-)
-
-def deduplicate_sources(sources: List[Dict]) -> List[Dict]:
-    """Remove duplicate sources by URL."""
-    seen_urls = set()
-    unique_sources = []
-    
-    for source in sources:
-        url = source.get("url", "")
-        if "#" in url:
-            url = url.split("#")[0]
-        url = url.rstrip("/")
-        
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            unique_sources.append(source)
-    
-    log_orchestrator(f"Deduplicated {len(sources)} to {len(unique_sources)} sources")
-    return unique_sources
-
-
-def calculate_source_diversity(sources: List[Dict]) -> float:
-    """Calculate diversity score based on unique domains."""
-    from urllib.parse import urlparse
-    
-    domains = set()
-    for source in sources:
-        url = source.get("url", "")
-        try:
-            domain = urlparse(url).netloc
-            if domain:
-                domains.add(domain)
-        except:
-            pass
-    
-    return len(domains) / max(len(sources), 1)
+from src.prompts import get_followup_topics_prompt, get_synthesis_prompt, format_sources_for_synthesis
 
 
 def extract_all_citations(text: str) -> Set[int]:
-    """Extract all citation IDs from text, handling both [1] and [1, 2, 3] formats.
-    
-    Examples:
-        "[1]" -> {1}
-        "[1, 2, 3]" -> {1, 2, 3}
-        "[1][2][3]" -> {1, 2, 3}
-        "text [1, 2] more [3]" -> {1, 2, 3}
-    
+    """
+    Extract all citation IDs from text
+
+    Args:
+        text (str): Text to extract citations from
+
     Returns:
-        Set of unique citation IDs
+        Set[int]: Set of unique citation IDs
     """
     citation_ids = set()
-    
     citation_patterns = re.findall(r'\[([0-9,\s]+)\]', text)
     
     for pattern in citation_patterns:
@@ -75,9 +33,8 @@ def extract_all_citations(text: str) -> Set[int]:
     return citation_ids
 
 
-async def generate_followup_topics(query: str, completed: List[Dict], 
-                                   gaps: List[str], avg_confidence: float) -> List[str]:
-    """Generate new topics to fill research gaps."""
+async def generate_followup_topics(query: str, completed: List[Dict], gaps: List[str], avg_confidence: float) -> List[str]:
+    """Generate new topics to fill research gaps"""
     prompt = get_followup_topics_prompt(query, completed, gaps, avg_confidence)
     
     try:
@@ -89,8 +46,8 @@ async def generate_followup_topics(query: str, completed: List[Dict],
         log_orchestrator(f"Deepening failed: {e}", level="warning")
         return []
 
-async def run_single_researcher(topic: str, shared_context: str, 
-                                global_scraped: Set[str]) -> dict:
+
+async def run_single_researcher(topic: str, shared_context: str, global_scraped: Set[str]) -> dict:
     """Run a single researcher on a topic."""
     from src.graphs import build_researcher_graph
     
@@ -116,6 +73,7 @@ async def run_single_researcher(topic: str, shared_context: str,
     
     result = await researcher.ainvoke(initial_state)
     return result
+
 
 async def plan_node(state: OrchestratorState) -> dict:
     """Display research plan and initialize tracking."""
@@ -249,11 +207,7 @@ async def dispatch_node(state: OrchestratorState) -> dict:
 
 
 async def critique_node(state: OrchestratorState) -> dict:
-    """Analyze results and generate new topics if confidence is low.
-    
-    BALANCED: Confidence threshold at 0.60 (middle ground between 0.55 and 0.70).
-    Allows up to 4 iterations for better depth.
-    """
+    """Analyze results and generate new topics if confidence is low."""
     log_orchestrator("=" * 60)
     log_orchestrator("CRITIQUE & DEEPENING")
     log_orchestrator("=" * 60)
@@ -299,18 +253,53 @@ async def critique_node(state: OrchestratorState) -> dict:
 
 
 async def synthesize_node(state: OrchestratorState) -> dict:
-    """Final synthesis with structured JSON output and improved citation extraction."""
+    """Final synthesis with structured JSON output."""
     log_orchestrator("=" * 60)
     log_orchestrator("FINAL SYNTHESIS")
     log_orchestrator("=" * 60)
     
-    unique_sources = deduplicate_sources(state["all_sources"])
+    global_sources = []
+    url_to_global_id = {}
+    findings_with_global_citations = []
     
-    for i, source in enumerate(unique_sources, 1):
-        source["id"] = i
+    for topic_idx, researcher_result in enumerate(state["completed"]):
+        topic = researcher_result["topic"]
+        findings = researcher_result["findings"]
+        local_sources = researcher_result["sources"]
+        
+        local_to_global = {}
+        
+        for local_idx, source in enumerate(local_sources, 1):
+            url = source.get("url", "")
+            if "#" in url:
+                url = url.split("#")[0]
+            url = url.rstrip("/")
+            
+            if url in url_to_global_id:
+                global_id = url_to_global_id[url]
+            else:
+                global_sources.append(source)
+                global_id = len(global_sources)
+                url_to_global_id[url] = global_id
+                source["id"] = global_id
+            
+            local_to_global[local_idx] = global_id
+        
+        updated_findings = findings
+        for local_id in sorted(local_to_global.keys(), reverse=True):
+            global_id = local_to_global[local_id]
+            updated_findings = re.sub(
+                rf'\[{local_id}\]',
+                f'[{global_id}]',
+                updated_findings
+            )
+        
+        findings_with_global_citations.append(f"{topic}\n{updated_findings}")
     
-    findings_text = format_findings_by_topic(state["completed"])
-    source_list = format_sources_for_synthesis(unique_sources)
+    log_orchestrator(f"Collected {len(global_sources)} unique sources")
+    
+    findings_text = '\n\n---\n\n'.join(findings_with_global_citations)
+    source_list = format_sources_for_synthesis(global_sources)
     
     prompt = get_synthesis_prompt(
         query=state["query"],
@@ -320,7 +309,6 @@ async def synthesize_node(state: OrchestratorState) -> dict:
     
     try:
         llm = get_llm(LLMTier.SMART)
-        
         report_text = await llm.generate(prompt, max_tokens=8000)
         
         if len(report_text) < 500:
@@ -333,14 +321,13 @@ async def synthesize_node(state: OrchestratorState) -> dict:
         confidences = [r.get("quality_metrics", {}).get("confidence", 0.5) for r in state["completed"]]
         final_confidence = sum(confidences) / len(confidences) if confidences else 0.5
         
-        # Build structured result
         synthesis_result = {
             "report_text": report_text,
-            "sources_used": unique_sources,
+            "sources_used": global_sources,
             "citations": cited_source_ids,
             "metadata": {
                 "confidence": final_confidence,
-                "source_count": len(unique_sources),
+                "source_count": len(global_sources),
                 "sources_cited": len(cited_source_ids)
             }
         }
@@ -357,17 +344,17 @@ async def synthesize_node(state: OrchestratorState) -> dict:
         log_orchestrator(f"Synthesis failed: {e}", level="error")
         
         fallback_report = f"# {state['query']}\n\n"
-        for r in state["completed"]:
-            fallback_report += f"## {r['topic']}\n\n{r['findings']}\n\n"
+        for entry in findings_with_global_citations:
+            fallback_report += f"## {entry}\n\n"
         
         return {
             "synthesis_result": {
                 "report_text": fallback_report,
-                "sources_used": unique_sources,
+                "sources_used": global_sources,
                 "citations": [],
                 "metadata": {
                     "confidence": 0.3,
-                    "source_count": len(unique_sources),
+                    "source_count": len(global_sources),
                     "sources_cited": 0
                 }
             },
@@ -376,7 +363,7 @@ async def synthesize_node(state: OrchestratorState) -> dict:
 
 
 def should_continue_orchestrator(state: OrchestratorState) -> str:
-    """Check if we have more work (including newly added topics)."""
+    """Check if we have more work."""
     completed = {r["topic"] for r in state["completed"]}
     failed = state.get("failed_topics", set())
     

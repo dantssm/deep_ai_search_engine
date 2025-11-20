@@ -1,26 +1,31 @@
-# src/states.py
-"""Enhanced states with quality metrics and structured results."""
+"""States with quality metrics and structured results."""
 
 from typing import TypedDict, List, Optional, Dict
 
+
 class RAGContext(TypedDict):
+    """RAG collection context."""
     collection_id: str
     chunks_indexed: int
 
+
 class QualityMetrics(TypedDict):
-    confidence: float  # 0-1 score
+    """Quality metrics for research results."""
+    confidence: float
     source_count: int
-    source_diversity: float
-    gap_count: int
-    fact_count: int
-    coverage_score: float
+    iterations_used: int
+    chunks_retrieved: int
+
 
 class RetryInfo(TypedDict):
+    """Retry tracking for failed topics."""
     topic: str
     attempt: int
     last_error: str
 
+
 class ResearcherState(TypedDict):
+    """State for individual researcher agent."""
     topic: str
     parent_query: str
     
@@ -39,7 +44,9 @@ class ResearcherState(TypedDict):
     gaps: List[str]
     quality_metrics: Optional[QualityMetrics]
 
+
 class OrchestratorState(TypedDict):
+    """State for orchestrator agent."""
     query: str
     depth: str
     sub_topics: List[str]
@@ -53,12 +60,14 @@ class OrchestratorState(TypedDict):
     overall_quality: Optional[QualityMetrics]
     synthesis_result: Optional[Dict]
 
+
 class SynthesisResult(TypedDict):
     """Structured synthesis output."""
     report_text: str
     sources_used: List[Dict]
     citations: List[int]
     metadata: Dict
+
 
 class ResearchResult(TypedDict):
     """Final research output."""
