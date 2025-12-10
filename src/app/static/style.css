@@ -282,3 +282,12 @@ body {
   .output-layout { height: auto; min-height: 400px; }
   .btn { width: 100%; }
 }
+
+.about-poster {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 32px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
